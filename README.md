@@ -17,19 +17,20 @@ A countdown display built on the **Heltec Vision Master E213** (ESP32-S3R8) deve
 ### 1. Clone the repository
 
 ```bash
-git clone <this-repo-url> countdown2
-cd countdown2
+git clone https://github.com/Meandmybadself/E-Ink-Countdown-Screen.git
+cd E-Ink-Countdown-Screen
 ```
 
-### 2. Clone the heltec-eink-modules library
+### 2. Clone the heltec-eink-modules & Adafruit GFX Library
 
 The display driver library must be cloned into the project root:
 
 ```bash
 git clone git@github.com:todd-herbert/heltec-eink-modules.git
+git clone https://github.com/adafruit/Adafruit-GFX-Library.git
 ```
 
-This places the library at `heltec-eink-modules/` alongside `src/`, which PlatformIO picks up via `lib_extra_dirs = .` in `platformio.ini`.
+This places the library at `Adafruit-GFX-Library/` alongside `src/`, which PlatformIO picks up via `lib_extra_dirs = .` in `platformio.ini`.
 
 ### 3. Configure
 

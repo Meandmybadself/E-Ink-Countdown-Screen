@@ -2,8 +2,8 @@
 #include <WiFi.h>
 #include <time.h>
 #include <heltec-eink-modules.h>
-#include "Fonts/FreeSansBold24pt7b.h"
-#include "Fonts/FreeSans9pt7b.h"
+#include "number60pt7b.h"
+#include "number10pt7b.h"
 
 #include "config.h"
 
@@ -86,26 +86,20 @@ void showCountdown(int days) {
 
     // Large days number, centered upper area
     String daysStr = String(days);
-    display.setFont(&FreeSansBold24pt7b);
+    display.setFont(&number60pt7b);
     int numW = display.getTextWidth(daysStr.c_str());
     int numX = (display.width() - numW) / 2;
-    display.setCursor(numX, 58);
+    display.setCursor(numX, 88);
     display.print(daysStr);
 
-    // "days until" label
-    display.setFont(&FreeSans9pt7b);
-    const char* label = "days until";
-    int labelW = display.getTextWidth(label);
-    display.setCursor((display.width() - labelW) / 2, 82);
-    display.print(label);
-
     // Target date
-    const char* months[] = {"January","February","March","April","May","June",
-                            "July","August","September","October","November","December"};
+    display.setFont(&number10pt7b);
+    const char* months[] = {"JANUARY","FEBRUARY","MARCH","APRIL","MAY","JUNE",
+                            "JULY","AUGUST","SEPTEMBER","OCTOBER","NOVEMBER","DECEMBER"};
     char dateBuf[32];
     snprintf(dateBuf, sizeof(dateBuf), "%s %d, %d", months[TARGET_MONTH - 1], TARGET_DAY, TARGET_YEAR);
     int dateW = display.getTextWidth(dateBuf);
-    display.setCursor((display.width() - dateW) / 2, 102);
+    display.setCursor((display.width() - dateW) / 2, 114);
     display.print(dateBuf);
 
     display.update();
@@ -117,7 +111,7 @@ void showError(const char* message) {
     display.clear();
     display.setTextColor(BLACK);
 
-    display.setFont(&FreeSans9pt7b);
+    display.setFont(&number10pt7b);
     display.printCenter(message);
     display.update();
 }
