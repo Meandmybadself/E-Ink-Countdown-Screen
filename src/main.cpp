@@ -1,19 +1,24 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <time.h>
-#include <heltec-eink-modules.h>
-#include "number60pt7b.h"
-#include "number10pt7b.h"
-
 #include "config.h"
-
-EInkDisplay_VisionMasterE213V1_1 display;
+#include "storage.h"
+#include "portal.h"
+#include "display.h"
 
 RTC_DATA_ATTR int bootCount = 0;
+RTC_DATA_ATTR int daysRemaining = -1;   // -1 = needs initial sync
+RTC_DATA_ATTR uint8_t daysSinceSync = 0;
+RTC_DATA_ATTR bool isRetrying = false;
+RTC_DATA_ATTR uint8_t retryCount = 0;
 
-bool connectWiFi() {
+static bool inSetupMode = false;
+
+// --- WiFi & Time helpers ---
+
+static bool connectWiFi(const char* ssid, const char* password) {
     Serial.print("Connecting to WiFi...");
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    WiFi.begin(ssid, password);
 
     unsigned long start = millis();
     while (WiFi.status() != WL_CONNECTED) {
@@ -26,42 +31,34 @@ bool connectWiFi() {
     }
 
     Serial.println(" connected!");
-    Serial.print("IP address: ");
-    Serial.println(WiFi.localIP());
     return true;
 }
 
-bool syncTime() {
-    Serial.println("Syncing time with NTP server...");
-    configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER);
+static bool syncTime(const char* tz) {
+    Serial.println("Syncing time with NTP...");
+    configTzTime(tz, NTP_SERVER);
 
     struct tm timeinfo;
-    int retries = 10;
-    while (!getLocalTime(&timeinfo) && retries > 0) {
-        delay(500);
-        retries--;
+    for (int i = 0; i < 10; i++) {
+        if (getLocalTime(&timeinfo, 500)) {
+            char buf[32];
+            strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &timeinfo);
+            Serial.printf("Time synced: %s\n", buf);
+            return true;
+        }
     }
-
-    if (retries == 0) {
-        Serial.println("NTP sync FAILED!");
-        return false;
-    }
-
-    Serial.println("Time synchronized!");
-    char buf[32];
-    strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &timeinfo);
-    Serial.print("Current time: ");
-    Serial.println(buf);
-    return true;
+    Serial.println("NTP sync FAILED!");
+    return false;
 }
 
-// Convert a date to a day count (consistent reference, no timezone dependency)
-long dateToDays(int y, int m, int d) {
+// --- Date calculation ---
+
+static long dateToDays(int y, int m, int d) {
     if (m <= 2) { y--; m += 12; }
     return 365L * y + y / 4 - y / 100 + y / 400 + (153 * (m - 3) + 2) / 5 + d;
 }
 
-int calculateDaysRemaining() {
+static int calculateDaysRemaining(int targetYear, int targetMonth, int targetDay) {
     struct tm timeinfo;
     if (!getLocalTime(&timeinfo)) return -1;
 
@@ -70,92 +67,159 @@ int calculateDaysRemaining() {
     int nowD = timeinfo.tm_mday;
 
     long today  = dateToDays(nowY, nowM, nowD);
-    long target = dateToDays(TARGET_YEAR, TARGET_MONTH, TARGET_DAY);
+    long target = dateToDays(targetYear, targetMonth, targetDay);
     long diff   = target - today;
 
-    Serial.printf("Today: %04d-%02d-%02d (%ld), Target: %04d-%02d-%02d (%ld), Diff: %ld\n",
-                  nowY, nowM, nowD, today, TARGET_YEAR, TARGET_MONTH, TARGET_DAY, target, diff);
+    Serial.printf("Today: %04d-%02d-%02d, Target: %04d-%02d-%02d, Diff: %ld\n",
+                  nowY, nowM, nowD, targetYear, targetMonth, targetDay, diff);
 
     return (diff > 0) ? (int)diff : 0;
 }
 
-void showCountdown(int days) {
-    display.landscape();
-    display.clear();
-    display.setTextColor(BLACK);
+// --- Sleep ---
 
-    // Large days number, centered upper area
-    String daysStr = String(days);
-    display.setFont(&number60pt7b);
-    int numW = display.getTextWidth(daysStr.c_str());
-    int numX = (display.width() - numW) / 2;
-    display.setCursor(numX, 88);
-    display.print(daysStr);
-
-    // Target date
-    display.setFont(&number10pt7b);
-    const char* months[] = {"JANUARY","FEBRUARY","MARCH","APRIL","MAY","JUNE",
-                            "JULY","AUGUST","SEPTEMBER","OCTOBER","NOVEMBER","DECEMBER"};
-    char dateBuf[32];
-    snprintf(dateBuf, sizeof(dateBuf), "%s %d, %d", months[TARGET_MONTH - 1], TARGET_DAY, TARGET_YEAR);
-    int dateW = display.getTextWidth(dateBuf);
-    display.setCursor((display.width() - dateW) / 2, 114);
-    display.print(dateBuf);
-
-    display.update();
-    Serial.println("Display updated!");
-}
-
-void showError(const char* message) {
-    display.landscape();
-    display.clear();
-    display.setTextColor(BLACK);
-
-    display.setFont(&number10pt7b);
-    display.printCenter(message);
-    display.update();
-}
-
-void enterDeepSleep() {
-    Serial.printf("Entering deep sleep for %d seconds...\n", SLEEP_DURATION);
+static void deepSleep(int seconds) {
+    Serial.printf("Sleeping %d seconds...\n", seconds);
     WiFi.disconnect(true);
     WiFi.mode(WIFI_OFF);
-    esp_sleep_enable_timer_wakeup((uint64_t)SLEEP_DURATION * 1000000ULL);
+    esp_sleep_enable_timer_wakeup((uint64_t)seconds * 1000000ULL);
     esp_deep_sleep_start();
 }
+
+// --- Sync attempt ---
+
+static bool trySync(const char* ssid, const char* password, const char* tz) {
+    if (!connectWiFi(ssid, password)) return false;
+    bool ok = syncTime(tz);
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+    return ok;
+}
+
+// --- Main ---
 
 void setup() {
     Serial.begin(115200);
     delay(100);
 
     bootCount++;
-    Serial.printf("\nBoot count: %d\n", bootCount);
+    Serial.printf("\nBoot #%d | days=%d | sync=%d | retry=%d/%d\n",
+                  bootCount, daysRemaining, daysSinceSync, isRetrying, retryCount);
 
-    if (!connectWiFi()) {
-        showError("WiFi Error");
-        enterDeepSleep();
+    // Check if device is configured
+    if (!storageIsConfigured()) {
+        Serial.println("No config — setup mode");
+        inSetupMode = true;
+        displayShowSetupMode();
+        portalStart();
         return;
     }
 
-    if (!syncTime()) {
-        showError("Sync Failed");
-        enterDeepSleep();
+    // Load config
+    String ssid, password, targetDate, tz;
+    if (!storageLoadConfig(ssid, password, targetDate, tz)) {
+        Serial.println("Config read error — setup mode");
+        storageClear();
+        inSetupMode = true;
+        displayShowSetupMode();
+        portalStart();
         return;
     }
 
-    int days = calculateDaysRemaining();
-    if (days < 0) {
-        showError("Time Error");
-        enterDeepSleep();
+    int targetYear, targetMonth, targetDay;
+    sscanf(targetDate.c_str(), "%d-%d-%d", &targetYear, &targetMonth, &targetDay);
+
+    // After power loss, RTC is cleared — try NVS backup
+    if (daysRemaining < 0) {
+        daysRemaining = storageLoadDays();
+        Serial.printf("Loaded days from NVS: %d\n", daysRemaining);
+    }
+
+    // --- Retry wake: just try to sync, don't decrement ---
+    if (isRetrying) {
+        Serial.println("Retry wake — attempting sync");
+        if (trySync(ssid.c_str(), password.c_str(), tz.c_str())) {
+            // Sync succeeded — recalculate from real time
+            int days = calculateDaysRemaining(targetYear, targetMonth, targetDay);
+            if (days >= 0) daysRemaining = days;
+            isRetrying = false;
+            retryCount = 0;
+            daysSinceSync = 1;
+            storageSaveDays(daysRemaining);
+            displayShowCountdown(daysRemaining, targetYear, targetMonth, targetDay, false);
+            Serial.println("Sync recovered!");
+        } else {
+            retryCount++;
+            Serial.printf("Retry %d/%d failed\n", retryCount, MAX_RETRIES);
+            if (retryCount >= MAX_RETRIES) {
+                // Give up retrying, resume daily schedule
+                isRetrying = false;
+                retryCount = 0;
+                daysSinceSync++;
+                Serial.println("Max retries — resuming daily mode");
+                deepSleep(SLEEP_DURATION_SEC);
+                return;
+            }
+            // Don't touch display, sleep 4h and try again
+            deepSleep(RETRY_SLEEP_SEC);
+            return;
+        }
+        deepSleep(SLEEP_DURATION_SEC);
         return;
     }
 
-    Serial.printf("Days until %04d-%02d-%02d: %d\n", TARGET_YEAR, TARGET_MONTH, TARGET_DAY, days);
+    // --- First boot ever: need initial sync to establish baseline ---
+    if (daysRemaining < 0) {
+        Serial.println("No baseline — must sync");
+        if (trySync(ssid.c_str(), password.c_str(), tz.c_str())) {
+            daysRemaining = calculateDaysRemaining(targetYear, targetMonth, targetDay);
+            if (daysRemaining < 0) daysRemaining = 0;
+            daysSinceSync = 1;
+            storageSaveDays(daysRemaining);
+            displayShowCountdown(daysRemaining, targetYear, targetMonth, targetDay, false);
+            deepSleep(SLEEP_DURATION_SEC);
+        } else {
+            // Can't establish baseline — retry in 4h
+            // Don't touch the display, just sleep and retry
+            Serial.println("Initial sync failed — retry in 4h");
+            isRetrying = true;
+            retryCount = 1;
+            deepSleep(RETRY_SLEEP_SEC);
+        }
+        return;
+    }
 
-    showCountdown(days);
-    enterDeepSleep();
+    // --- Normal daily wake ---
+    daysRemaining--;
+    if (daysRemaining < 0) daysRemaining = 0;
+    daysSinceSync++;
+    Serial.printf("Daily update: %d days remaining\n", daysRemaining);
+
+    bool needsSync = (daysSinceSync >= SYNC_INTERVAL_DAYS);
+    bool syncFailed = false;
+
+    if (needsSync) {
+        Serial.println("Weekly sync due");
+        if (trySync(ssid.c_str(), password.c_str(), tz.c_str())) {
+            int days = calculateDaysRemaining(targetYear, targetMonth, targetDay);
+            if (days >= 0) daysRemaining = days;
+            daysSinceSync = 1;
+            Serial.printf("Sync corrected to %d days\n", daysRemaining);
+        } else {
+            syncFailed = true;
+            isRetrying = true;
+            retryCount = 0;
+            Serial.println("Sync failed — entering retry mode");
+        }
+    }
+
+    storageSaveDays(daysRemaining);
+    displayShowCountdown(daysRemaining, targetYear, targetMonth, targetDay, syncFailed);
+    deepSleep(syncFailed ? RETRY_SLEEP_SEC : SLEEP_DURATION_SEC);
 }
 
 void loop() {
-    // Never reached — device deep sleeps after setup()
+    if (inSetupMode) {
+        portalLoop();
+    }
 }

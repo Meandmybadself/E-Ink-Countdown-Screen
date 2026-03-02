@@ -1,0 +1,2 @@
+#!/bin/bash
+~/.platformio/penv/bin/python ~/.platformio/packages/tool-esptoolpy/esptool.py --chip esp32s3 --port /dev/cu.usbmodem101 --baud 921600 --before no_reset erase_flash && ~/.platformio/penv/bin/python ~/.platformio/packages/tool-esptoolpy/esptool.py --chip esp32s3 --port /dev/cu.usbmodem101 --baud 921600 --before  no_reset --after hard_reset write_flash -z --flash_mode dio --flash_freq 80m --flash_size 8MB 0x0000 .pio/build/vision-master-e213/bootloader.bin 0x8000 .pio/build/vision-master-e213/partitions.bin 0x10000 .pio/build/vision-master-e213/firmware.bin
