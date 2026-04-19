@@ -9,13 +9,13 @@ After updating code:
 
 ### Entering download mode
 
-The ESP32-S3 uses native USB-CDC. To flash reliably:
+The ESP32-S3 uses native USB-CDC. Reliable sequence:
 
-1. Unplug USB cable
-2. Hold **BUTTON 1** (GPIO 0 / BOOT)
-3. Plug USB back in while holding BUTTON 1
-4. Release BUTTON 1 after ~1s
+1. Unplug USB
+2. Hold **BOOT** + **RST** together
+3. Plug USB back in while holding both
+4. Release **RST** (keep holding BOOT ~1s, then release)
 
-`upload.sh` uses `--before usb_reset`, so a plain replug often works too — but the BUTTON 1 hold is the guaranteed path if a board is stuck.
+`upload.sh` uses `--before usb_reset`, so a plain replug may also work — but the BOOT+RST hold is the guaranteed path if a board is stuck.
 
-Press **RST** to see a fresh boot log in `monitor.sh`.
+Press **RST** alone to see a fresh boot log in `monitor.sh`.

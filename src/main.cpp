@@ -12,6 +12,7 @@ RTC_DATA_ATTR int daysRemaining = -1;   // -1 = needs initial sync
 RTC_DATA_ATTR uint8_t daysSinceSync = 0;
 RTC_DATA_ATTR bool isRetrying = false;
 RTC_DATA_ATTR uint8_t retryCount = 0;
+RTC_DATA_ATTR uint32_t chargingWakes = 0;
 
 static bool inSetupMode = false;
 
@@ -163,6 +164,37 @@ void setup() {
         Serial.printf("Loaded days from NVS: %d\n", daysRemaining);
     }
 
+    // --- Charging wake: recompute day count from wallclock, don't use wake counter ---
+    // No VBUS pin on this board, so we infer USB via voltage: only an active
+    // charger holds a Li-ion at/above BATTERY_CHARGING_MV. The RTC clock survives
+    // deep sleep, so calculateDaysRemaining() stays correct across short wakes.
+    // We also resync via NTP once per ~24h of charging to bound RTC drift.
+    if (batteryMv > BATTERY_CHARGING_MV && daysRemaining >= 0 && !isRetrying) {
+        chargingWakes++;
+
+        if (chargingWakes % CHARGING_SYNC_WAKES == 0) {
+            Serial.println("Charging-mode NTP resync");
+            if (trySync(ssid.c_str(), password.c_str(), tz.c_str())) {
+                daysSinceSync = 1;
+            }
+        }
+
+        int computed = calculateDaysRemaining(targetYear, targetMonth, targetDay);
+        if (computed >= 0) {
+            daysRemaining = computed;
+            storageSaveDays(daysRemaining);
+        }
+
+        Serial.printf("Charging (%d mV, wake %u) — sleep %ds\n",
+                      batteryMv, chargingWakes, CHARGING_POLL_SEC);
+        displayShowCountdown(daysRemaining, targetYear, targetMonth, targetDay, false, batteryPercent);
+        deepSleep(CHARGING_POLL_SEC);
+        return;
+    }
+
+    // Reset charging counter when we leave charging mode.
+    chargingWakes = 0;
+
     // --- Retry wake: just try to sync, don't decrement ---
     if (isRetrying) {
         Serial.println("Retry wake — attempting sync");
@@ -218,8 +250,15 @@ void setup() {
     }
 
     // --- Normal daily wake ---
-    daysRemaining--;
-    if (daysRemaining < 0) daysRemaining = 0;
+    // Prefer wallclock (RTC survives deep sleep after initial NTP sync).
+    // Fall back to decrement only if the clock was wiped (e.g., after power loss).
+    int computed = calculateDaysRemaining(targetYear, targetMonth, targetDay);
+    if (computed >= 0) {
+        daysRemaining = computed;
+    } else {
+        daysRemaining--;
+        if (daysRemaining < 0) daysRemaining = 0;
+    }
     daysSinceSync++;
     Serial.printf("Daily update: %d days remaining\n", daysRemaining);
 

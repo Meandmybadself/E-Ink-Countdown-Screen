@@ -53,14 +53,14 @@ Use the included helper script — it builds, polls `/dev/cu.usbmodem*` until th
 ./upload.sh
 ```
 
-**Entering download mode:** the ESP32-S3 uses native USB, so a clean replug is the most reliable way in.
+**Entering download mode:**
 
 1. Unplug the USB cable
-2. Hold **BUTTON 1** (GPIO 0, the one labeled `BOOT`/`USER` near the USB port)
-3. Plug the USB cable back in while still holding BUTTON 1
-4. Release BUTTON 1 after ~1 second
+2. Hold **BOOT** and **RST** at the same time
+3. Plug the USB cable back in while still holding both buttons
+4. Release **RST** (keep holding BOOT for another ~1 second, then release)
 
-The board will enumerate as `/dev/cu.usbmodem*` and `upload.sh` will take it from there. If upload still fails, try the sequence again — some cables only carry power.
+The board will enumerate as `/dev/cu.usbmodem*` and `upload.sh` will take it from there. If upload still fails, try the sequence again — some USB-C cables only carry power.
 
 ### 5. Monitor serial output
 

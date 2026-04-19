@@ -20,7 +20,7 @@ static void drawBatteryPercent(int percent) {
 }
 
 void displayShowCountdown(int days, int targetYear, int targetMonth, int targetDay, bool syncIndicator, int batteryPercent) {
-    display.landscape();
+    display.setRotation(USB_LEFT);
     display.clear();
     display.setTextColor(BLACK);
 
@@ -56,7 +56,7 @@ void displayShowCountdown(int days, int targetYear, int targetMonth, int targetD
 }
 
 void displayShowSetupMode() {
-    display.landscape();
+    display.setRotation(USB_LEFT);
     display.clear();
     display.setTextColor(BLACK);
     display.setFont(&number10pt7b);

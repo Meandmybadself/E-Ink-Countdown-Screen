@@ -35,3 +35,9 @@
 #define BATTERY_MULTIPLIER 5.047f // 4.9 * 1.03 — divider + calibration factor
 #define BATTERY_FULL_MV    4200   // 4.20 V full
 #define BATTERY_EMPTY_MV   3300   // 3.30 V empty (cutoff)
+
+// Charging detection — no VBUS pin on this board, so we infer from voltage.
+// A resting full Li-ion sits ~4.15 V; only an active charger holds it at/above 4.20 V.
+#define BATTERY_CHARGING_MV      4200
+#define CHARGING_POLL_SEC        60     // refresh cadence while charging
+#define CHARGING_SYNC_WAKES      1440   // resync NTP once per ~24h while charging
