@@ -47,15 +47,28 @@ cp src/config.example.h src/config.h
 
 ### 4. Build and upload
 
+Use the included helper script — it builds, polls `/dev/cu.usbmodem*` until the device appears, then flashes:
+
 ```bash
-pio run -t upload
+./upload.sh
 ```
+
+**Entering download mode:** the ESP32-S3 uses native USB, so a clean replug is the most reliable way in.
+
+1. Unplug the USB cable
+2. Hold **BUTTON 1** (GPIO 0, the one labeled `BOOT`/`USER` near the USB port)
+3. Plug the USB cable back in while still holding BUTTON 1
+4. Release BUTTON 1 after ~1 second
+
+The board will enumerate as `/dev/cu.usbmodem*` and `upload.sh` will take it from there. If upload still fails, try the sequence again — some cables only carry power.
 
 ### 5. Monitor serial output
 
 ```bash
-pio device monitor
+./monitor.sh
 ```
+
+Polls for the device and starts `pio device monitor` as soon as it appears. Press the **RST** button on the board if you want to see a fresh boot log.
 
 ## How it works
 

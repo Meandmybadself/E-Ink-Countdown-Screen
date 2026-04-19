@@ -24,3 +24,14 @@
 
 // NTP sync interval in days
 #define SYNC_INTERVAL_DAYS 7
+
+// Reset button (hold on boot to enter setup mode)
+#define RESET_BUTTON_PIN   0      // GPIO 0 (Button 1)
+#define RESET_HOLD_MS      3000   // Hold 3 seconds to reset
+
+// Battery sense (Heltec Vision Master E213)
+#define BATTERY_ADC_PIN    7      // GPIO 7 — ADC1_CH6 tied to VBAT divider
+#define BATTERY_CTRL_PIN   46     // GPIO 46 — enables divider when HIGH
+#define BATTERY_MULTIPLIER 5.047f // 4.9 * 1.03 — divider + calibration factor
+#define BATTERY_FULL_MV    4200   // 4.20 V full
+#define BATTERY_EMPTY_MV   3300   // 3.30 V empty (cutoff)

@@ -9,7 +9,17 @@ void displayInit() {
     // Display initializes in constructor; nothing extra needed
 }
 
-void displayShowCountdown(int days, int targetYear, int targetMonth, int targetDay, bool syncIndicator) {
+static void drawBatteryPercent(int percent) {
+    char buf[8];
+    snprintf(buf, sizeof(buf), "%d%%", percent);
+    display.setFont(NULL);
+    display.setTextSize(1);
+    int w = display.getTextWidth(buf);
+    display.setCursor(display.width() - w - 4, 4);
+    display.print(buf);
+}
+
+void displayShowCountdown(int days, int targetYear, int targetMonth, int targetDay, bool syncIndicator, int batteryPercent) {
     display.landscape();
     display.clear();
     display.setTextColor(BLACK);
@@ -31,6 +41,11 @@ void displayShowCountdown(int days, int targetYear, int targetMonth, int targetD
     int dateW = display.getTextWidth(dateBuf);
     display.setCursor((display.width() - dateW) / 2, 114);
     display.print(dateBuf);
+
+    // Battery percent, top-right
+    if (batteryPercent >= 0) {
+        drawBatteryPercent(batteryPercent);
+    }
 
     // Tiny sync indicator dot in bottom-right corner
     if (syncIndicator) {

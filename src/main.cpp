@@ -5,6 +5,7 @@
 #include "storage.h"
 #include "portal.h"
 #include "display.h"
+#include "battery.h"
 
 RTC_DATA_ATTR int bootCount = 0;
 RTC_DATA_ATTR int daysRemaining = -1;   // -1 = needs initial sync
@@ -106,6 +107,33 @@ void setup() {
     Serial.printf("\nBoot #%d | days=%d | sync=%d | retry=%d/%d\n",
                   bootCount, daysRemaining, daysSinceSync, isRetrying, retryCount);
 
+    int batteryMv = batteryReadMillivolts();
+    int batteryPercent = -1;
+    if (batteryMv > 0) {
+        long pct = (long)(batteryMv - BATTERY_EMPTY_MV) * 100 /
+                   (BATTERY_FULL_MV - BATTERY_EMPTY_MV);
+        batteryPercent = pct < 0 ? 0 : (pct > 100 ? 100 : (int)pct);
+    }
+    Serial.printf("Battery: %d%% (%d mV)\n", batteryPercent, batteryMv);
+
+    // Check for reset button hold
+    pinMode(RESET_BUTTON_PIN, INPUT_PULLUP);
+    if (digitalRead(RESET_BUTTON_PIN) == LOW) {
+        Serial.print("Reset button pressed, hold for 3s...");
+        unsigned long start = millis();
+        while (digitalRead(RESET_BUTTON_PIN) == LOW) {
+            if (millis() - start >= RESET_HOLD_MS) {
+                Serial.println(" clearing config!");
+                storageClear();
+                break;
+            }
+            delay(50);
+        }
+        if (millis() - start < RESET_HOLD_MS) {
+            Serial.println(" released early, normal boot.");
+        }
+    }
+
     // Check if device is configured
     if (!storageIsConfigured()) {
         Serial.println("No config — setup mode");
@@ -146,7 +174,7 @@ void setup() {
             retryCount = 0;
             daysSinceSync = 1;
             storageSaveDays(daysRemaining);
-            displayShowCountdown(daysRemaining, targetYear, targetMonth, targetDay, false);
+            displayShowCountdown(daysRemaining, targetYear, targetMonth, targetDay, false, batteryPercent);
             Serial.println("Sync recovered!");
         } else {
             retryCount++;
@@ -176,7 +204,7 @@ void setup() {
             if (daysRemaining < 0) daysRemaining = 0;
             daysSinceSync = 1;
             storageSaveDays(daysRemaining);
-            displayShowCountdown(daysRemaining, targetYear, targetMonth, targetDay, false);
+            displayShowCountdown(daysRemaining, targetYear, targetMonth, targetDay, false, batteryPercent);
             deepSleep(SLEEP_DURATION_SEC);
         } else {
             // Can't establish baseline — retry in 4h
@@ -214,7 +242,7 @@ void setup() {
     }
 
     storageSaveDays(daysRemaining);
-    displayShowCountdown(daysRemaining, targetYear, targetMonth, targetDay, syncFailed);
+    displayShowCountdown(daysRemaining, targetYear, targetMonth, targetDay, syncFailed, batteryPercent);
     deepSleep(syncFailed ? RETRY_SLEEP_SEC : SLEEP_DURATION_SEC);
 }
 
